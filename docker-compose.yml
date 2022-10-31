@@ -1,0 +1,48 @@
+version: "3.9"
+
+x-backend: &backend
+  build:
+    dockerfile: Dockerfile
+    context: .
+    target: backend-development
+  image: ${DOCKER_IMAGE:-local/continuum/web}:${DOCKER_TAG:-latest}
+  environment:
+    ALLOWED_HOSTS: "*"
+    DATABASE_URL: postgresql://postgres@database/db
+    DEBUG: 1
+    SECRET_KEY: super-secret
+    CSRF_TRUSTED_ORIGINS: >
+      http://localhost:8000
+    CORS_ORIGIN_WHITELIST: >
+      http://localhost:8000
+  volumes:
+    - ./:/app/:rw,delegated
+
+services:
+  database:
+    image: postgres:13.8-alpine
+    volumes:
+      - ./_local/db:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: db
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: pg_isready -Upostgres
+      interval: 1s
+      timeout: 30s
+
+  backend:
+    <<: *backend
+    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      database: {condition: service_healthy}
+
+  mypy:
+    <<: *backend
+    command: /app/bin/mypy.sh
+    stdin_open: true
+    tty: true
